@@ -2584,7 +2584,7 @@ export function createArtifactSdk(
       if (!detailsReplayed) {
         detailsReplayed = true;
         // Anchored loads skip the replay, so the authored defaults must not overwrite saved choices.
-        if (!window.location.hash) scheduleDetailsStateReport();
+        if (!window.location.hash && !msg.skipReplay) scheduleDetailsStateReport();
       }
       if (!window.location.hash) restoreReviewState(msg.state);
     }

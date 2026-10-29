@@ -5139,7 +5139,7 @@ test("an anchor in the artifact keeps its fragment and skips the replay", async 
     /^\/artifact\/abc\/index\.html\?artifact_revision=\d+&artifact_load_token=[^#]+#evidence$/,
   );
   // The one message left is the SDK's replay opportunity, which carries no state to apply.
-  assert.deepEqual(replayAfter(chrome, start), [{ type: "lavish:restoreReviewState", state: null }]);
+  assert.deepEqual(replayAfter(chrome, start), [{ type: "lavish:restoreReviewState", state: null, skipReplay: true }]);
 
   // A fragment-only report is not review state, so clearing the anchor brings the replay back.
   reportArtifactHash(chrome, "");
@@ -5165,7 +5165,7 @@ test("an anchor in the review page skips the replay too", async () => {
     storage,
     outerHash: "#evidence",
   });
-  assert.deepEqual(replayAfter(anchored, 0), [{ type: "lavish:restoreReviewState", state: null }]);
+  assert.deepEqual(replayAfter(anchored, 0), [{ type: "lavish:restoreReviewState", state: null, skipReplay: true }]);
   // Skipping the replay retires nothing: the draft is still there for an unanchored load.
   assert.equal((await restoredDraft(storage)).length, 1);
 });

@@ -4769,7 +4769,7 @@ frame.addEventListener("load", () => {
   postToFrame({ type: "lavish:setAnnotationMode", enabled: annotation && !ended });
   if (location.hash || lastArtifactHash) {
     // Release the SDK's reporting barrier without overriding the browser's anchor navigation.
-    postToFrame({ type: "lavish:restoreReviewState", state: null });
+    postToFrame({ type: "lavish:restoreReviewState", state: null, skipReplay: true });
   } else {
     // Disclosures set scrollable height; restore the viewport-positioned card after scrolling.
     const { details, card, fields } = lastReviewState || {};

@@ -863,6 +863,30 @@ test("an anchored artifact keeps the browser's own position and disclosures", ()
   assert.equal("state" in sdk.posted.at(-1), false);
 });
 
+test("an outer review fragment skips initial disclosure reports until a user toggle", () => {
+  const sdk = bootSdk();
+  const summary = appendTo(sdk.body, details("summary", false));
+
+  sdk.sendChromeMessage({ type: "lavish:restoreReviewState", state: null, skipReplay: true });
+  sdk.runTimers();
+  assert.deepEqual(stateReports(sdk.posted), []);
+  assert.equal(summary.open, false);
+
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  sdk.card().querySelector(".lavish-cancel").onclick();
+  sdk.runTimers();
+  assert.ok(stateReports(sdk.posted).length > 0);
+  assert.equal(
+    stateReports(sdk.posted).some((message) => "details" in message.state),
+    false,
+  );
+
+  summary.open = true;
+  sdk.toggle(summary);
+  sdk.runTimers();
+  assert.deepEqual(plain(stateReports(sdk.posted).at(-1).state), { details: [{ id: "summary", open: true }] });
+});
+
 // pushState and replaceState change the fragment without `hashchange`, so the next load would
 // otherwise restore an anchor the reader already left.
 test("an artifact fragment changed through history is reported for the next load", () => {
