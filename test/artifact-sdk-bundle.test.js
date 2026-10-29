@@ -843,7 +843,20 @@ test("an anchored artifact keeps the browser's own position and disclosures", ()
   sdk.runTimers();
   assert.equal(summary.open, false);
   assert.deepEqual(scrolls, []);
-  assert.deepEqual(plain(stateReports(sdk.posted).at(-1).state), { details: [{ id: "summary", open: false }] });
+  // The authored defaults are not the reader's choice, so they never overwrite the saved state,
+  // not even riding along with a card report.
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  sdk.card().querySelector(".lavish-cancel").onclick();
+  sdk.runTimers();
+  assert.equal(
+    stateReports(sdk.posted).some((message) => "details" in message.state),
+    false,
+  );
+
+  summary.open = true;
+  sdk.toggle(summary);
+  sdk.runTimers();
+  assert.deepEqual(plain(stateReports(sdk.posted).at(-1).state), { details: [{ id: "summary", open: true }] });
 
   sdk.navigateToHash("");
   assert.equal(sdk.posted.at(-1).artifact_hash, "");

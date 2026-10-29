@@ -2139,6 +2139,8 @@ export function createArtifactSdk(
 
   // Only unique ids can identify disclosures across reloads without guessing.
   let detailsReplayed = false;
+  // Card and field reports carry details only once a details report has been sent.
+  let detailsReported = false;
   let detailsStateTimer = 0;
   let savedDetailsState = new Map();
 
@@ -2182,6 +2184,7 @@ export function createArtifactSdk(
     if (detailsStateTimer) window.clearTimeout(detailsStateTimer);
     detailsStateTimer = window.setTimeout(() => {
       detailsStateTimer = 0;
+      detailsReported = true;
       postArtifactMessage("lavish:reviewState", { state: { details: collectDetailsState() } });
     }, 120);
   }
@@ -2205,7 +2208,7 @@ export function createArtifactSdk(
         value: String(entry.el.value === undefined || entry.el.value === null ? "" : entry.el.value).slice(0, 2000),
         checked: entry.type === "checkbox" || entry.type === "radio" ? Boolean(entry.el.checked) : null,
       })),
-      ...(detailsReplayed ? { details: collectDetailsState() } : {}),
+      ...(detailsReported ? { details: collectDetailsState() } : {}),
     };
   }
 
@@ -2580,7 +2583,8 @@ export function createArtifactSdk(
     if (msg.type === "lavish:restoreReviewState") {
       if (!detailsReplayed) {
         detailsReplayed = true;
-        scheduleDetailsStateReport();
+        // Anchored loads skip the replay, so the authored defaults must not overwrite saved choices.
+        if (!window.location.hash) scheduleDetailsStateReport();
       }
       if (!window.location.hash) restoreReviewState(msg.state);
     }
