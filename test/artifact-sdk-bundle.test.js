@@ -740,6 +740,57 @@ test("disclosure state is reported only after the chrome's replay opportunity", 
   assert.equal(reports.at(-1).artifact_load_token, "load-token");
 });
 
+test("details reports retain absent saved ids and prefer present live state across reloads", () => {
+  const sdk = bootSdk();
+  const summary = appendTo(sdk.body, details("summary", false));
+  const shared = appendTo(sdk.body, details("shared", false));
+  const sharedSpan = appendTo(sdk.body, createElement("span"));
+  sharedSpan.id = shared.id;
+  const replaced = appendTo(sdk.body, createElement("span"));
+  replaced.id = "replaced";
+  sdk.sendChromeMessage({
+    type: "lavish:restoreReviewState",
+    state: {
+      details: [
+        { id: "late-open", open: true },
+        { id: "late-closed", open: false },
+        { id: "summary", open: true },
+        { id: "shared", open: true },
+        { id: "replaced", open: true },
+      ],
+    },
+  });
+  sdk.runTimers();
+  const expected = [
+    { id: "late-open", open: true },
+    { id: "late-closed", open: false },
+    { id: "summary", open: true },
+  ];
+  assert.deepEqual(plain(stateReports(sdk.posted).at(-1).state.details), expected);
+
+  summary.open = false;
+  sdk.toggle(summary);
+  sdk.runTimers();
+  expected[2].open = false;
+  assert.deepEqual(plain(stateReports(sdk.posted).at(-1).state), { details: expected });
+
+  sdk.click(appendTo(sdk.body, cell("p", "Decision board")));
+  sdk.card().querySelector(".lavish-cancel").onclick();
+  sdk.runTimers();
+  const state = plain(stateReports(sdk.posted).at(-1).state);
+  assert.equal(state.card, null);
+  assert.deepEqual(state.details, expected);
+
+  const reloaded = bootSdk();
+  const lateOpen = appendTo(reloaded.body, details("late-open", false));
+  const lateClosed = appendTo(reloaded.body, details("late-closed", true));
+  const live = appendTo(reloaded.body, details("summary", true));
+  reloaded.sendChromeMessage({ type: "lavish:restoreReviewState", state });
+  assert.equal(lateOpen.open, true);
+  assert.equal(lateClosed.open, false);
+  assert.equal(live.open, false);
+});
+
 // A details report that also said `card: null` would retire a draft whose anchor has not rendered
 // yet, so a toggle reports disclosure state alone.
 test("a details toggle never reports over a draft still waiting for its anchor", () => {

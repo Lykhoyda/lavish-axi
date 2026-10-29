@@ -2140,6 +2140,7 @@ export function createArtifactSdk(
   // Only unique ids can identify disclosures across reloads without guessing.
   let detailsReplayed = false;
   let detailsStateTimer = 0;
+  let savedDetailsState = new Map();
 
   function identifiedDetails() {
     const counts = new Map();
@@ -2152,18 +2153,24 @@ export function createArtifactSdk(
   }
 
   function collectDetailsState() {
-    return [...identifiedDetails()].map(([id, el]) => ({ id, open: Boolean(el.open) }));
+    const presentIds = new Set([...document.querySelectorAll("[id]")].map((el) => el.id));
+    const merged = new Map([...savedDetailsState].filter(([id]) => !presentIds.has(id)));
+    for (const [id, el] of identifiedDetails()) merged.set(id, Boolean(el.open));
+    savedDetailsState = merged;
+    return [...merged].map(([id, open]) => ({ id, open }));
   }
 
   // Assigning `open` deliberately queues a native, trusted, non-bubbling `toggle` for artifact listeners.
   function restoreDetailsState(details) {
     if (!Array.isArray(details)) return;
+    savedDetailsState = new Map();
     const byId = identifiedDetails();
     const seen = new Set();
     for (const record of details) {
       if (!record || typeof record.id !== "string" || typeof record.open !== "boolean") continue;
       if (seen.has(record.id)) continue;
       seen.add(record.id);
+      if (record.id) savedDetailsState.set(record.id, record.open);
       const el = byId.get(record.id);
       if (el && el.open !== record.open) el.open = record.open;
     }
