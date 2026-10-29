@@ -2628,10 +2628,26 @@ export function createArtifactSdk(
   );
 
   // Sandbox navigation hides fragment changes from the chrome, so report them for the next load.
-  const reportArtifactHash = () =>
-    postArtifactMessage("lavish:reviewState", { artifact_hash: String(window.location.hash || "") });
+  let reportedArtifactHash = null;
+  const reportArtifactHash = () => {
+    const hash = String(window.location.hash || "");
+    if (hash === reportedArtifactHash) return;
+    reportedArtifactHash = hash;
+    postArtifactMessage("lavish:reviewState", { artifact_hash: hash });
+  };
   reportArtifactHash();
   window.addEventListener("hashchange", reportArtifactHash);
+  // pushState/replaceState change the fragment without `hashchange`; only the report is added.
+  window.addEventListener("popstate", reportArtifactHash);
+  for (const method of ["pushState", "replaceState"]) {
+    const original = window.history?.[method];
+    if (typeof original !== "function") continue;
+    window.history[method] = function (...args) {
+      const result = original.apply(this, args);
+      reportArtifactHash();
+      return result;
+    };
+  }
 
   // Report scroll position to the chrome so it can be restored across hot reloads.
   // The iframe is sandboxed without same-origin, so the chrome can't read scrollY directly.

@@ -218,6 +218,15 @@ function bootSdk({
     scrollTo: (x, y) => onScrollTo(x, y),
     URL: sandbox.URL,
   };
+  // Like the browser, a history entry's URL replaces the fragment and dispatches no `hashchange`.
+  const historyUrl = (url) => {
+    if (url !== undefined)
+      sandbox.window.location.hash = String(url).includes("#") ? `#${String(url).split("#")[1]}` : "";
+  };
+  sandbox.window.history = {
+    pushState: (state, title, url) => historyUrl(url),
+    replaceState: (state, title, url) => historyUrl(url),
+  };
   sandbox.globalThis = sandbox;
 
   vm.runInNewContext(createSdkJs("abc", 3, "load-token"), sandbox);
@@ -273,6 +282,11 @@ function bootSdk({
       for (const entry of documentListeners.filter((listener) => listener.type === "toggle")) {
         entry.handler({ target });
       }
+    },
+    history: sandbox.window.history,
+    popState(next) {
+      sandbox.window.location.hash = next;
+      for (const entry of windowListeners.filter((listener) => listener.type === "popstate")) entry.handler({});
     },
     navigateToHash(next) {
       sandbox.window.location.hash = next;
@@ -834,6 +848,25 @@ test("an anchored artifact keeps the browser's own position and disclosures", ()
   sdk.navigateToHash("");
   assert.equal(sdk.posted.at(-1).artifact_hash, "");
   assert.equal("state" in sdk.posted.at(-1), false);
+});
+
+// pushState and replaceState change the fragment without `hashchange`, so the next load would
+// otherwise restore an anchor the reader already left.
+test("an artifact fragment changed through history is reported for the next load", () => {
+  const sdk = bootSdk();
+  const hashReports = () => sdk.posted.filter((message) => "artifact_hash" in message).map((m) => m.artifact_hash);
+
+  sdk.history.pushState({}, "", "#evidence");
+  sdk.history.replaceState(null, "", "#summary");
+  sdk.history.replaceState(null, "", "#summary");
+  sdk.popState("#evidence");
+  sdk.history.pushState({}, "", "index.html");
+
+  assert.deepEqual(hashReports(), ["", "#evidence", "#summary", "#evidence", ""]);
+  assert.equal(
+    sdk.posted.some((message) => "artifact_hash" in message && "state" in message),
+    false,
+  );
 });
 
 // `showAnnotationCard` closes whatever card is open before it draws, so a late restore landing on
