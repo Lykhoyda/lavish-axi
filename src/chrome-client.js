@@ -278,6 +278,9 @@ let postedQueuedAnchors = "[]";
 // session so a full page reload replays it too.
 let lastReviewState = loadJsonState(reviewStateStorageKey, null);
 if (lastReviewState && typeof lastReviewState !== "object") lastReviewState = null;
+// The artifact's own fragment, which the SDK reports because the sandbox hides it from the chrome.
+// The next load keeps it, and any fragment skips the review-state replay.
+let lastArtifactHash = splitFragment(artifactSrc)[1];
 const ARTIFACT_SILENCE_PROBE_MS = 8000;
 const ARTIFACT_LOAD_BEGIN_RETRY_DELAYS_MS = [100, 300];
 // Backoff for retrying a whole begin-load attempt after its in-call retries ran out. The
@@ -338,15 +341,23 @@ let sendHintPersistent = false;
 let sendFailureOwner = null;
 let sendAcknowledgementWarningVisible = false;
 
+// Query parameters go before a fragment, or the browser reads them as part of the anchor.
+function splitFragment(src) {
+  const at = src.indexOf("#");
+  return at < 0 ? [src, ""] : [src.slice(0, at), src.slice(at)];
+}
+
 function artifactFrameSrcForLoad(load) {
-  const separator = artifactSrc.includes("?") ? "&" : "?";
+  const [path] = splitFragment(artifactSrc);
+  const separator = path.includes("?") ? "&" : "?";
   return (
-    artifactSrc +
+    path +
     separator +
     "artifact_revision=" +
     encodeURIComponent(load.revision) +
     "&artifact_load_token=" +
-    encodeURIComponent(load.token)
+    encodeURIComponent(load.token) +
+    lastArtifactHash
   );
 }
 
@@ -1189,11 +1200,19 @@ function setChromeOutdated(visible, reason = chromeOutdatedReason) {
   if (outdatedBanner) outdatedBanner.hidden = ended || !visible;
 }
 
-function setReviewState(state) {
+// A report replaces only the members it carries: a toggle reports `details` alone, and must not
+// retire a draft still waiting for its anchor.
+function setReviewState(patch) {
+  const state = patch ? { ...lastReviewState, ...patch } : null;
   lastReviewState = state;
   // The artifact reported a card, so its anchor exists: whatever miss was recorded is answered.
-  if (state?.card) unrestorableDraftMiss = null;
-  if (!state || (!state.card && !(Array.isArray(state.fields) && state.fields.length))) {
+  if (patch?.card) unrestorableDraftMiss = null;
+  if (
+    !state ||
+    (!state.card &&
+      !(Array.isArray(state.fields) && state.fields.length) &&
+      !(Array.isArray(state.details) && state.details.length))
+  ) {
     try {
       sessionStorage.removeItem(reviewStateStorageKey);
     } catch {
@@ -3483,8 +3502,8 @@ async function replaceArtifactFrame({ recoveryRetry = false } = {}) {
     // load (superseded/out-of-order/exhausted retries below) must leave it intact.
     resetRevisionLegend();
     startLayoutGateCycle();
-    const currentSrc = frame.src || "about:blank";
-    frame.src = currentSrc + (currentSrc.includes("?") ? "&" : "?") + "lavish_reload=" + Date.now();
+    const [currentPath, currentHash] = splitFragment(frame.src || "about:blank");
+    frame.src = currentPath + (currentPath.includes("?") ? "&" : "?") + "lavish_reload=" + Date.now() + currentHash;
     return true;
   }
   const requestSequence = ++artifactLoadRequestSequence;
@@ -4401,7 +4420,10 @@ window.addEventListener("message", (event) => {
     lastScroll = { x: Number(msg.x) || 0, y: Number(msg.y) || 0 };
   }
   if (msg.type === "lavish:reviewState") {
-    setReviewState(msg.state && typeof msg.state === "object" ? msg.state : null);
+    const hash = msg.artifact_hash;
+    if (typeof hash === "string" && (hash === "" || hash.startsWith("#"))) lastArtifactHash = hash;
+    // A fragment-only report carries no state, and must not clear the stored writing.
+    if ("state" in msg) setReviewState(msg.state && typeof msg.state === "object" ? msg.state : null);
   }
   if (msg.type === "lavish:reviewDraftUnrestorable") {
     discardUnrestorableDraft(String(msg.selector || ""));
@@ -4747,9 +4769,21 @@ document.addEventListener(
 frame.addEventListener("load", () => {
   if (artifactSpokeToken !== artifactLoadToken) armArtifactAvailabilityProbe(artifactLoadToken);
   postToFrame({ type: "lavish:setAnnotationMode", enabled: annotation && !ended });
-  // Replay the pre-reload scroll position so hot reloads don't jump the artifact to the top.
-  postToFrame({ type: "lavish:restoreScroll", x: lastScroll.x, y: lastScroll.y });
-  if (lastReviewState) postToFrame({ type: "lavish:restoreReviewState", state: lastReviewState });
+  if (location.hash || lastArtifactHash) {
+    // An anchor wins: the browser has already navigated the fresh file to it. The null state is
+    // only the SDK's replay opportunity, after which it reports the page's own disclosures.
+    postToFrame({ type: "lavish:restoreReviewState", state: null });
+  } else {
+    // Disclosures first: reset sections change the height above the remembered scroll. The card
+    // is positioned against the viewport, so it comes back after the scroll.
+    const { details, card, fields } = lastReviewState || {};
+    postToFrame({ type: "lavish:restoreReviewState", state: { details: Array.isArray(details) ? details : [] } });
+    // Replay the pre-reload scroll position so hot reloads don't jump the artifact to the top.
+    postToFrame({ type: "lavish:restoreScroll", x: lastScroll.x, y: lastScroll.y });
+    if (card || (Array.isArray(fields) && fields.length)) {
+      postToFrame({ type: "lavish:restoreReviewState", state: { card, fields } });
+    }
+  }
   postQueuedAnchors(true);
   if (overlayIndex !== null) {
     inlineWhiteboardChannels.delete(overlayIndex);

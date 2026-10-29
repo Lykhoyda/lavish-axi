@@ -2137,6 +2137,53 @@ export function createArtifactSdk(
     return entries;
   }
 
+  // Disclosure state is reader context too: a reload resets every <details> to the new file's
+  // default, which also moves the remembered scroll. Only a <details> with a unique id is tracked;
+  // an id shared with any other element is ambiguous, and Lavish never invents an identity.
+  let detailsReplayed = false;
+  let detailsStateTimer = 0;
+
+  function identifiedDetails() {
+    const counts = new Map();
+    for (const el of document.querySelectorAll("[id]")) counts.set(el.id, (counts.get(el.id) || 0) + 1);
+    const byId = new Map();
+    for (const el of document.querySelectorAll("details[id]")) {
+      if (el.id && counts.get(el.id) === 1) byId.set(el.id, el);
+    }
+    return byId;
+  }
+
+  function collectDetailsState() {
+    return [...identifiedDetails()].map(([id, el]) => ({ id, open: Boolean(el.open) }));
+  }
+
+  // Assigning `open` queues the browser's native `toggle`, which the artifact's own listeners may
+  // observe; Lavish neither fabricates nor suppresses it, and never clicks a summary.
+  function restoreDetailsState(details) {
+    if (!Array.isArray(details)) return;
+    const byId = identifiedDetails();
+    const seen = new Set();
+    for (const record of details) {
+      if (!record || typeof record.id !== "string" || typeof record.open !== "boolean") continue;
+      if (seen.has(record.id)) continue;
+      seen.add(record.id);
+      const el = byId.get(record.id);
+      if (el && el.open !== record.open) el.open = record.open;
+    }
+  }
+
+  // Details-only, so a toggle cannot report `card: null` over a draft still waiting for its anchor.
+  // Nothing is reported before the chrome's first replay: the parser fires `toggle` for sections
+  // authored open, and reporting those would store the new file's defaults over the reader's.
+  function scheduleDetailsStateReport() {
+    if (!detailsReplayed) return;
+    if (detailsStateTimer) window.clearTimeout(detailsStateTimer);
+    detailsStateTimer = window.setTimeout(() => {
+      detailsStateTimer = 0;
+      postArtifactMessage("lavish:reviewState", { state: { details: collectDetailsState() } });
+    }, 120);
+  }
+
   function collectReviewState() {
     const card = shadow ? shadow.querySelector(".lavish-annotation-card") : null;
     const textarea = card ? card.querySelector("textarea") : null;
@@ -2156,6 +2203,7 @@ export function createArtifactSdk(
         value: String(entry.el.value === undefined || entry.el.value === null ? "" : entry.el.value).slice(0, 2000),
         checked: entry.type === "checkbox" || entry.type === "radio" ? Boolean(entry.el.checked) : null,
       })),
+      ...(detailsReplayed ? { details: collectDetailsState() } : {}),
     };
   }
 
@@ -2169,6 +2217,7 @@ export function createArtifactSdk(
 
   function restoreReviewState(state) {
     if (!state || typeof state !== "object") return;
+    restoreDetailsState(state.details);
     const fields = Array.isArray(state.fields) ? state.fields : [];
     if (fields.length) {
       const entries = lavishQuestionControls();
@@ -2220,6 +2269,13 @@ export function createArtifactSdk(
     const el = event.target;
     if (el instanceof Element && el.closest("[data-lavish-question]")) scheduleReviewStateReport();
   });
+  document.addEventListener(
+    "toggle",
+    (event) => {
+      if (/** @type {any} */ (event.target)?.tagName === "DETAILS") scheduleDetailsStateReport();
+    },
+    true,
+  );
 
   function ensureShadow() {
     if (shadow) return shadow;
@@ -2515,10 +2571,17 @@ export function createArtifactSdk(
         snapshot_request_id: typeof msg.snapshot_request_id === "string" ? msg.snapshot_request_id : "",
       });
     }
-    if (msg.type === "lavish:restoreScroll") {
+    // With a fragment the browser has already navigated to the anchor, and that position wins.
+    if (msg.type === "lavish:restoreScroll" && !window.location.hash) {
       window.scrollTo(Number(msg.x) || 0, Number(msg.y) || 0);
     }
-    if (msg.type === "lavish:restoreReviewState") restoreReviewState(msg.state);
+    if (msg.type === "lavish:restoreReviewState") {
+      if (!detailsReplayed) {
+        detailsReplayed = true;
+        scheduleDetailsStateReport();
+      }
+      if (!window.location.hash) restoreReviewState(msg.state);
+    }
     if (msg.type === "lavish:revealElement") revealElement(msg.selector);
     if (msg.type === "lavish:queuedAnchors") {
       queuedAnchorSelectors = new Set(Array.isArray(msg.selectors) ? msg.selectors.map(String) : []);
@@ -2561,6 +2624,13 @@ export function createArtifactSdk(
     },
     true,
   );
+
+  // The chrome cannot read this sandboxed document's fragment, and a link followed in here never
+  // changes the frame's src, so the fragment is reported for the next load to keep.
+  const reportArtifactHash = () =>
+    postArtifactMessage("lavish:reviewState", { artifact_hash: String(window.location.hash || "") });
+  reportArtifactHash();
+  window.addEventListener("hashchange", reportArtifactHash);
 
   // Report scroll position to the chrome so it can be restored across hot reloads.
   // The iframe is sandboxed without same-origin, so the chrome can't read scrollY directly.
