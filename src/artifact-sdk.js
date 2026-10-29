@@ -2137,9 +2137,7 @@ export function createArtifactSdk(
     return entries;
   }
 
-  // Disclosure state is reader context too: a reload resets every <details> to the new file's
-  // default, which also moves the remembered scroll. Only a <details> with a unique id is tracked;
-  // an id shared with any other element is ambiguous, and Lavish never invents an identity.
+  // Only unique ids can identify disclosures across reloads without guessing.
   let detailsReplayed = false;
   let detailsStateTimer = 0;
 
@@ -2157,8 +2155,7 @@ export function createArtifactSdk(
     return [...identifiedDetails()].map(([id, el]) => ({ id, open: Boolean(el.open) }));
   }
 
-  // Assigning `open` queues the browser's native `toggle`, which the artifact's own listeners may
-  // observe; Lavish neither fabricates nor suppresses it, and never clicks a summary.
+  // Assigning `open` deliberately queues a native, trusted, non-bubbling `toggle` for artifact listeners.
   function restoreDetailsState(details) {
     if (!Array.isArray(details)) return;
     const byId = identifiedDetails();
@@ -2172,9 +2169,7 @@ export function createArtifactSdk(
     }
   }
 
-  // Details-only, so a toggle cannot report `card: null` over a draft still waiting for its anchor.
-  // Nothing is reported before the chrome's first replay: the parser fires `toggle` for sections
-  // authored open, and reporting those would store the new file's defaults over the reader's.
+  // Wait for replay so parser toggles cannot overwrite saved state; details-only patches preserve drafts.
   function scheduleDetailsStateReport() {
     if (!detailsReplayed) return;
     if (detailsStateTimer) window.clearTimeout(detailsStateTimer);
@@ -2625,8 +2620,7 @@ export function createArtifactSdk(
     true,
   );
 
-  // The chrome cannot read this sandboxed document's fragment, and a link followed in here never
-  // changes the frame's src, so the fragment is reported for the next load to keep.
+  // Sandbox navigation hides fragment changes from the chrome, so report them for the next load.
   const reportArtifactHash = () =>
     postArtifactMessage("lavish:reviewState", { artifact_hash: String(window.location.hash || "") });
   reportArtifactHash();

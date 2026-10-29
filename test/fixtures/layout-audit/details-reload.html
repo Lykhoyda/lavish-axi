@@ -26,6 +26,12 @@
         height: 2400px;
         background: linear-gradient(#eef, #fee);
       }
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: white;
+      }
       #spacer {
         height: 1200px;
       }
@@ -33,9 +39,11 @@
   </head>
   <body>
     <pre id="probe">PROBE{}</pre>
-    <button id="jump" type="button" onclick="window.scrollTo(0, 2600)">Jump down</button>
-    <a href="#tail">Go to tail</a>
-    <button id="clearhash" type="button" onclick="location.hash = ''">Clear anchor</button>
+    <nav>
+      <button id="jump" type="button" onclick="window.scrollTo(0, 2600)">Jump down</button>
+      <a href="#tail">Go to tail</a>
+      <button id="clearhash" type="button" onclick="location.hash = ''">Clear anchor</button>
+    </nav>
     <details id="notes">
       <summary>Long notes</summary>
       <div class="tall">tall body</div>

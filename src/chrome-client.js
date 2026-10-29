@@ -278,8 +278,7 @@ let postedQueuedAnchors = "[]";
 // session so a full page reload replays it too.
 let lastReviewState = loadJsonState(reviewStateStorageKey, null);
 if (lastReviewState && typeof lastReviewState !== "object") lastReviewState = null;
-// The artifact's own fragment, which the SDK reports because the sandbox hides it from the chrome.
-// The next load keeps it, and any fragment skips the review-state replay.
+// The sandbox hides artifact fragment changes from the chrome; the SDK reports them for reloads.
 let lastArtifactHash = splitFragment(artifactSrc)[1];
 const ARTIFACT_SILENCE_PROBE_MS = 8000;
 const ARTIFACT_LOAD_BEGIN_RETRY_DELAYS_MS = [100, 300];
@@ -1200,8 +1199,7 @@ function setChromeOutdated(visible, reason = chromeOutdatedReason) {
   if (outdatedBanner) outdatedBanner.hidden = ended || !visible;
 }
 
-// A report replaces only the members it carries: a toggle reports `details` alone, and must not
-// retire a draft still waiting for its anchor.
+// Merge partial reports so a disclosure toggle cannot retire a draft waiting for its anchor.
 function setReviewState(patch) {
   const state = patch ? { ...lastReviewState, ...patch } : null;
   lastReviewState = state;
@@ -4770,12 +4768,10 @@ frame.addEventListener("load", () => {
   if (artifactSpokeToken !== artifactLoadToken) armArtifactAvailabilityProbe(artifactLoadToken);
   postToFrame({ type: "lavish:setAnnotationMode", enabled: annotation && !ended });
   if (location.hash || lastArtifactHash) {
-    // An anchor wins: the browser has already navigated the fresh file to it. The null state is
-    // only the SDK's replay opportunity, after which it reports the page's own disclosures.
+    // Release the SDK's reporting barrier without overriding the browser's anchor navigation.
     postToFrame({ type: "lavish:restoreReviewState", state: null });
   } else {
-    // Disclosures first: reset sections change the height above the remembered scroll. The card
-    // is positioned against the viewport, so it comes back after the scroll.
+    // Disclosures set scrollable height; restore the viewport-positioned card after scrolling.
     const { details, card, fields } = lastReviewState || {};
     postToFrame({ type: "lavish:restoreReviewState", state: { details: Array.isArray(details) ? details : [] } });
     // Replay the pre-reload scroll position so hot reloads don't jump the artifact to the top.
