@@ -2143,6 +2143,8 @@ export function createArtifactSdk(
   let detailsReported = false;
   let detailsStateTimer = 0;
   let savedDetailsState = new Map();
+  // An anchored load replays nothing, so only disclosures toggled since are the reader's choice.
+  let toggledDetailsIds = null;
 
   function identifiedDetails() {
     const counts = new Map();
@@ -2157,7 +2159,9 @@ export function createArtifactSdk(
   function collectDetailsState() {
     const presentIds = new Set([...document.querySelectorAll("[id]")].map((el) => el.id));
     const merged = new Map([...savedDetailsState].filter(([id]) => !presentIds.has(id)));
-    for (const [id, el] of identifiedDetails()) merged.set(id, Boolean(el.open));
+    for (const [id, el] of identifiedDetails()) {
+      if (!toggledDetailsIds || toggledDetailsIds.has(id)) merged.set(id, Boolean(el.open));
+    }
     savedDetailsState = merged;
     return [...merged].map(([id, open]) => ({ id, open }));
   }
@@ -2277,7 +2281,10 @@ export function createArtifactSdk(
   document.addEventListener(
     "toggle",
     (event) => {
-      if (/** @type {any} */ (event.target)?.tagName === "DETAILS") scheduleDetailsStateReport();
+      const el = /** @type {any} */ (event.target);
+      if (el?.tagName !== "DETAILS") return;
+      if (toggledDetailsIds && detailsReplayed && el.id) toggledDetailsIds.add(el.id);
+      scheduleDetailsStateReport();
     },
     true,
   );
@@ -2585,6 +2592,7 @@ export function createArtifactSdk(
         detailsReplayed = true;
         // Anchored loads skip the replay, so the authored defaults must not overwrite saved choices.
         if (!window.location.hash && !msg.skipReplay) scheduleDetailsStateReport();
+        else toggledDetailsIds = new Set();
       }
       if (!window.location.hash) restoreReviewState(msg.state);
     }

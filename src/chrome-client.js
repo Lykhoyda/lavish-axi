@@ -1202,6 +1202,12 @@ function setChromeOutdated(visible, reason = chromeOutdatedReason) {
 // Merge partial reports so a disclosure toggle cannot retire a draft waiting for its anchor.
 function setReviewState(patch) {
   const state = patch ? { ...lastReviewState, ...patch } : null;
+  // An anchored load reports only toggled disclosures, so saved ones it omits are kept by id.
+  if (Array.isArray(patch?.details) && Array.isArray(lastReviewState?.details)) {
+    const byId = new Map(lastReviewState.details.map((record) => [record?.id, record]));
+    for (const record of patch.details) byId.set(record?.id, record);
+    state.details = [...byId.values()];
+  }
   lastReviewState = state;
   // The artifact reported a card, so its anchor exists: whatever miss was recorded is answered.
   if (patch?.card) unrestorableDraftMiss = null;

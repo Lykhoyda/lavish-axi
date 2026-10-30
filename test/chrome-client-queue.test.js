@@ -5153,6 +5153,26 @@ test("an anchor in the artifact keeps its fragment and skips the replay", async 
   ]);
 });
 
+// An anchored load reports only the disclosures the reader toggled, so the rest stay as saved.
+test("a details report keeps saved disclosures it does not mention", async () => {
+  const chrome = await createChromeHarness({ artifactSrc: "/artifact/abc/index.html" });
+  reportDetails(chrome, [
+    { id: "summary", open: true },
+    { id: "evidence", open: false },
+  ]);
+  reportDetails(chrome, [{ id: "summary", open: false }]);
+  await flushPromises();
+
+  const start = chrome.postedToFrame.length;
+  await loadNextArtifactRevision(chrome);
+  assert.deepEqual(replayAfter(chrome, start)[0].state, {
+    details: [
+      { id: "summary", open: false },
+      { id: "evidence", open: false },
+    ],
+  });
+});
+
 test("an anchor in the review page skips the replay too", async () => {
   const storage = new Map();
   const first = await createChromeHarness({ artifactSrc: "/artifact/abc/index.html", storage });

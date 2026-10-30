@@ -887,6 +887,20 @@ test("an outer review fragment skips initial disclosure reports until a user tog
   assert.deepEqual(plain(stateReports(sdk.posted).at(-1).state), { details: [{ id: "summary", open: true }] });
 });
 
+// Nothing was replayed on an anchored load, so the untouched disclosures still hold the new file's
+// defaults; a toggle reports only what the reader changed and the chrome keeps the rest.
+test("an anchored toggle reports only the disclosures the reader changed", () => {
+  const sdk = bootSdk({ hash: "#evidence" });
+  const summary = appendTo(sdk.body, details("summary", false));
+  appendTo(sdk.body, details("evidence", true));
+
+  sdk.sendChromeMessage({ type: "lavish:restoreReviewState", state: null, skipReplay: true });
+  summary.open = true;
+  sdk.toggle(summary);
+  sdk.runTimers();
+  assert.deepEqual(plain(stateReports(sdk.posted).at(-1).state), { details: [{ id: "summary", open: true }] });
+});
+
 // pushState and replaceState change the fragment without `hashchange`, so the next load would
 // otherwise restore an anchor the reader already left.
 test("an artifact fragment changed through history is reported for the next load", () => {
